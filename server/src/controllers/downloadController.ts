@@ -18,7 +18,7 @@ export const getMetadata = async (req: Request, res: Response) => {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
-      preferFreeFormats: true,
+      format: 'best',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
     };
 
@@ -59,6 +59,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
+      format: 'best',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
     };
     if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
