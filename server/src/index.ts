@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors({
   origin: [
-    'https://youtube-to-mp3-converter-pi.vercel.app/'
+    'https://youtube-to-mp3-converter-pi.vercel.app'
   ]
 }));
 app.use(express.json());
