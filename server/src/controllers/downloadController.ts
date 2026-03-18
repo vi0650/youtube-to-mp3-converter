@@ -18,7 +18,8 @@ export const getMetadata = async (req: Request, res: Response) => {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
-      format: 'best',
+      preferFreeFormats: true,
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
     };
 
@@ -53,33 +54,36 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
   try {
     console.log('Initiating download via yt-dlp to temp file for:', url);
-    
+
     // 1. Get info to construct the final filename
     const infoOptions: any = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
-      format: 'best',
+      preferFreeFormats: true,
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
     };
     if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
       infoOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
     }
     const info: any = await youtubedl(url, infoOptions);
-    
+
     const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
-    
+
     console.log('Got video metadata. Starting audio extraction for:', title);
 
     // 2. Download and extract audio to the temporary file
     const downloadOptions: any = {
+      format: 'bestaudio[ext=m4a]/bestaudio/best',
       extractAudio: true,
       audioFormat: 'mp3',
-      audioQuality: 0, // Best quality
+      audioQuality: 0,
       output: outputPath,
       ffmpegLocation: ffmpegPath || undefined,
       noCheckCertificates: true,
       noWarnings: true,
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
     };
     if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
@@ -91,21 +95,21 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
     // 3. Send the file to the client and delete it afterward
     res.download(finalFile, `${title}.mp3`, (err) => {
-        if (err) {
-            console.error('Error during file transfer:', err.message);
-        } else {
-            console.log('File successfully transferred to client.');
+      if (err) {
+        console.error('Error during file transfer:', err.message);
+      } else {
+        console.log('File successfully transferred to client.');
+      }
+
+      // Cleanup temp file
+      if (fs.existsSync(finalFile)) {
+        try {
+          fs.unlinkSync(finalFile);
+          console.log('Cleaned up temporary file:', finalFile);
+        } catch (cleanupErr) {
+          console.error('Failed to clean up temp file:', cleanupErr);
         }
-        
-        // Cleanup temp file
-        if (fs.existsSync(finalFile)) {
-            try {
-                fs.unlinkSync(finalFile);
-                console.log('Cleaned up temporary file:', finalFile);
-            } catch (cleanupErr) {
-                console.error('Failed to clean up temp file:', cleanupErr);
-            }
-        }
+      }
     });
 
   } catch (error: any) {
@@ -115,7 +119,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     }
     // Cleanup on failure
     if (fs.existsSync(finalFile)) {
-       try { fs.unlinkSync(finalFile); } catch(e) {}
+      try { fs.unlinkSync(finalFile); } catch (e) { }
     }
   }
 };
