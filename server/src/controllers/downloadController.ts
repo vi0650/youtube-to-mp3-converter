@@ -14,13 +14,19 @@ export const getMetadata = async (req: Request, res: Response) => {
 
   try {
     console.log('Fetching metadata using yt-dlp for:', url);
-    const info: any = await youtubedl(url, {
+    const options: any = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
-    });
+    };
+
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      options.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
+
+    const info: any = await youtubedl(url, options);
 
     res.json({
       title: info.title,
@@ -49,19 +55,23 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     console.log('Initiating download via yt-dlp to temp file for:', url);
     
     // 1. Get info to construct the final filename
-    const info: any = await youtubedl(url, {
+    const infoOptions: any = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
-    });
+    };
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      infoOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
+    const info: any = await youtubedl(url, infoOptions);
     
     const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
     
     console.log('Got video metadata. Starting audio extraction for:', title);
 
     // 2. Download and extract audio to the temporary file
-    await youtubedl(url, {
+    const downloadOptions: any = {
       extractAudio: true,
       audioFormat: 'mp3',
       audioQuality: 0, // Best quality
@@ -70,7 +80,11 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       noCheckCertificates: true,
       noWarnings: true,
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
-    });
+    };
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      downloadOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
+    await youtubedl(url, downloadOptions);
 
     console.log('Extraction complete. Serving file to client:', finalFile);
 
