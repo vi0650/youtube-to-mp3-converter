@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "nodemon",
-    "build": "npx yt-dlp-exec update-binary && tsc"
+    "build": "tsc"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
