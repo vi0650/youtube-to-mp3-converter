@@ -227,7 +227,9 @@ const App = () => {
 
         <Box mt="9" pt="7" style={{ borderTop: '1px solid var(--gray-4)', textAlign: 'center' }}>
           <Flex direction="column" gap="4" align="center">
-            <Text size="1" weight="bold" style={{ letterSpacing: '0.2em' }} color="gray">ENGINEERING EXCELLENCE BY GENEX</Text>
+            <Text size="2" weight="bold" style={{ letterSpacing: '0.15em', opacity: 0.8 }} color="gray">
+              DESIGNED & ENGINEERED BY <Text style={{ color: 'white', opacity: 1 }}>VI•0650</Text>
+            </Text>
 
             <Box mt="4">
               <Dock iconSize={40} iconMagnification={60} iconDistance={140}>
