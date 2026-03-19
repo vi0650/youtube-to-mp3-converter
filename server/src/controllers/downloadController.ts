@@ -1,31 +1,9 @@
 import { Request, Response } from 'express';
-import youtubedl from 'yt-dlp-exec';          // ✅ only change from your original
+import youtubedl from 'youtube-dl-exec';
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-
-// yt-dlp tries to write/update cookies file — Render's /etc/secrets is read-only.
-// Fix: copy cookies to /tmp (writable) on every request.
-const getCookiePath = (): string | undefined => {
-  const source = '/etc/secrets/cookies.txt';
-  const local = path.resolve(process.cwd(), 'cookies.txt');
-
-  const original = fs.existsSync(source) ? source
-    : fs.existsSync(local) ? local
-      : null;
-
-  if (!original) {
-    console.log('[cookies] NOT FOUND — running without cookies');
-    return undefined;
-  }
-
-  // Copy to writable /tmp so yt-dlp can update it without hitting read-only error
-  const tmp = path.join(os.tmpdir(), 'yt_cookies.txt');
-  fs.copyFileSync(original, tmp);
-  console.log('[cookies] Copied to writable path:', tmp);
-  return tmp;
-};
 
 export const getMetadata = async (req: Request, res: Response) => {
   const { url } = req.query;
@@ -41,12 +19,13 @@ export const getMetadata = async (req: Request, res: Response) => {
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=android_embedded',
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
     };
 
-    const cookiePath = getCookiePath();
-    if (cookiePath) options.cookies = cookiePath;
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      options.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
 
     const info: any = await youtubedl(url, options);
 
@@ -76,20 +55,20 @@ export const downloadMp3 = async (req: Request, res: Response) => {
   try {
     console.log('Initiating download via yt-dlp to temp file for:', url);
 
-    const cookiePath = getCookiePath();
-
     // 1. Get info to construct the final filename
     const infoOptions: any = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=android_embedded',
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
     };
-    if (cookiePath) infoOptions.cookies = cookiePath;
-
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      infoOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
     const info: any = await youtubedl(url, infoOptions);
+
     const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
 
     console.log('Got video metadata. Starting audio extraction for:', title);
@@ -104,11 +83,12 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       ffmpegLocation: ffmpegPath || undefined,
       noCheckCertificates: true,
       noWarnings: true,
-      extractorArgs: 'youtube:player_client=android_embedded',
+      extractorArgs: 'youtube:player_client=android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
     };
-    if (cookiePath) downloadOptions.cookies = cookiePath;
-
+    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+      downloadOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    }
     await youtubedl(url, downloadOptions);
 
     console.log('Extraction complete. Serving file to client:', finalFile);
@@ -121,6 +101,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
         console.log('File successfully transferred to client.');
       }
 
+      // Cleanup temp file
       if (fs.existsSync(finalFile)) {
         try {
           fs.unlinkSync(finalFile);
@@ -136,8 +117,10 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to process YouTube stream' });
     }
+    // Cleanup on failure
     if (fs.existsSync(finalFile)) {
       try { fs.unlinkSync(finalFile); } catch (e) { }
     }
   }
 };
+

@@ -1,86 +1,82 @@
 import { motion } from "framer-motion";
 import { cn } from "../../lib/utils";
 
-const Aurora = ({ className }: { className?: string }) => {
+interface LiveBackgroundProps {
+  appearance?: "light" | "dark";
+}
+
+const MeshGradient = ({ appearance = "dark" }: { appearance?: "light" | "dark" }) => {
   return (
-    <div
-      className={cn(
-        "pointer-events-none absolute inset-0 overflow-hidden opacity-50 mix-blend-screen",
-        className
-      )}
-    >
-      <div className="absolute -inset-[10px] opacity-50">
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className={cn(
+        "absolute inset-0 transition-opacity duration-1000",
+        appearance === "dark" ? "opacity-60" : "opacity-40"
+      )}>
         <motion.div
-          animate={{
-            transform: [
-              "translate(0, 0)",
-              "translate(20%, 10%)",
-              "translate(-10%, 20%)",
-              "translate(10%, -10%)",
-              "translate(0, 0)",
-            ],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,150,0.15),transparent_50%)] blur-[100px]"
+            animate={{
+              x: ["0%", "50%", "-20%", "0%"],
+              y: ["0%", "30%", "60%", "0%"],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className={cn(
+              "absolute top-[-10%] left-[-10%] w-[100%] h-[100%] rounded-full blur-[120px] mix-blend-screen",
+              appearance === "dark" ? "bg-indigo-900/60" : "bg-blue-200/50"
+            )}
         />
         <motion.div
-          animate={{
-            transform: [
-              "translate(0, 0)",
-              "translate(-20%, -10%)",
-              "translate(10%, -20%)",
-              "translate(-10%, 10%)",
-              "translate(0, 0)",
-            ],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[160%] bg-[radial-gradient(circle_at_50%_50%,rgba(0,180,255,0.15),transparent_60%)] blur-[120px]"
+            animate={{
+              x: ["0%", "-40%", "20%", "0%"],
+              y: ["0%", "50%", "-20%", "0%"],
+            }}
+            transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+            className={cn(
+              "absolute top-[20%] right-[-10%] w-[90%] h-[90%] rounded-full blur-[140px] mix-blend-screen",
+              appearance === "dark" ? "bg-purple-900/40" : "bg-purple-100/50"
+            )}
         />
         <motion.div
-          animate={{
-            transform: [
-              "translate(0, 0)",
-              "translate(10%, -20%)",
-              "translate(-20%, 10%)",
-              "translate(20%, -10%)",
-              "translate(0, 0)",
-            ],
-          }}
-          transition={{
-            duration: 30,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[140%] bg-[radial-gradient(circle_at_50%_50%,rgba(180,50,255,0.1),transparent_50%)] blur-[100px]"
+            animate={{
+              x: ["0%", "30%", "-50%", "0%"],
+              y: ["0%", "-40%", "20%", "0%"],
+            }}
+            transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
+            className={cn(
+              "absolute bottom-[-10%] left-[10%] w-[80%] h-[80%] rounded-full blur-[110px] mix-blend-screen",
+              appearance === "dark" ? "bg-cyan-900/30" : "bg-teal-50/60"
+            )}
         />
       </div>
+      
+      {/* Noise Texture */}
+      <div className={cn(
+        "absolute inset-0 opacity-[0.04] pointer-events-none mix-blend-overlay",
+        appearance === "dark" ? "invert" : ""
+      )} style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
     </div>
   );
 };
 
-export const LiveBackground = () => {
+export const LiveBackground = ({ appearance = "dark" }: LiveBackgroundProps) => {
   return (
-    <div className="fixed inset-0 z-0 h-full w-full bg-black overflow-hidden pointer-events-none">
-      <Aurora />
+    <div className={cn(
+      "fixed inset-0 z-0 h-full w-full overflow-hidden pointer-events-none transition-colors duration-1000",
+      appearance === "dark" ? "bg-[#030612]" : "bg-[#f8fafc]"
+    )}>
+      {/* Base Grid Pattern */}
+      <div className={cn(
+        "absolute inset-0 transition-opacity duration-1000",
+        appearance === "dark" ? "opacity-[0.03]" : "opacity-[0.05]"
+      )} style={{ backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`, backgroundSize: '40px 40px' }} />
+
+      <MeshGradient appearance={appearance} />
       
-      {/* Dynamic scanlines for retro feel but subtle */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.1)_50%,transparent_100%)] bg-[length:100%_4px] opacity-20" />
-      
-      {/* Center Glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_800px_at_50%_40%,rgba(255,255,255,0.03),transparent)]" />
-      
-      {/* Noise layer */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} 
-      />
+      {/* Dynamic Overlay Shading */}
+      <div className={cn(
+        "absolute inset-0 pointer-events-none transition-colors duration-1000",
+        appearance === "dark" 
+          ? "bg-gradient-to-b from-[#030612]/20 via-transparent to-[#030612]/80"
+          : "bg-gradient-to-b from-white/10 via-transparent to-slate-200/30"
+      )} />
     </div>
   );
 };
