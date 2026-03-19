@@ -41,7 +41,7 @@ export const getMetadata = async (req: Request, res: Response) => {
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=android',
+      extractorArgs: 'youtube:player_client=android_embedded',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
     };
 
@@ -84,7 +84,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=android',
+      extractorArgs: 'youtube:player_client=android_embedded',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
     };
     if (cookiePath) infoOptions.cookies = cookiePath;
@@ -104,7 +104,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       ffmpegLocation: ffmpegPath || undefined,
       noCheckCertificates: true,
       noWarnings: true,
-      extractorArgs: 'youtube:player_client=android',
+      extractorArgs: 'youtube:player_client=android_embedded',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
     };
     if (cookiePath) downloadOptions.cookies = cookiePath;
