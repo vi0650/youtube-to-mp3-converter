@@ -4,17 +4,30 @@ import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 
-// Replace this helper (add it once at the top of your controller file)
 const getCookiesPath = (): string | null => {
-  const paths = [
-    '/etc/secrets/cookies.txt',              // Render Secret Files
-    path.resolve(process.cwd(), 'cookies.txt') // local / fallback
-  ];
-  for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+  const secretPath = '/etc/secrets/cookies.txt';
+  const localPath = path.resolve(process.cwd(), 'cookies.txt');
+
+  let sourcePath: string | null = null;
+
+  if (fs.existsSync(secretPath)) {
+    sourcePath = secretPath;
+  } else if (fs.existsSync(localPath)) {
+    sourcePath = localPath;
   }
-  return null;
+
+  if (!sourcePath) return null;
+
+  const tempPath = path.join(
+    os.tmpdir(),
+    `cookies_${crypto.randomUUID()}.txt`
+  );
+
+  fs.copyFileSync(sourcePath, tempPath);
+
+  return tempPath;
 };
 
 export const getMetadata = async (req: Request, res: Response) => {
@@ -23,6 +36,8 @@ export const getMetadata = async (req: Request, res: Response) => {
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'YouTube URL is required' });
   }
+
+  let cookiesPath: string | null = null;
 
   try {
     console.log('Fetching metadata using yt-dlp for:', url);
@@ -36,12 +51,17 @@ export const getMetadata = async (req: Request, res: Response) => {
     };
 
     const cookiesPath = getCookiesPath();
+
     if (cookiesPath) {
       options.cookies = cookiesPath;
       console.log('Using cookies from:', cookiesPath);
     }
 
     const info: any = await youtubedl(url, options);
+
+    if (cookiesPath && fs.existsSync(cookiesPath)) {
+      fs.unlinkSync(cookiesPath);
+    }
 
     res.json({
       title: info.title,
@@ -51,7 +71,14 @@ export const getMetadata = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Metadata Error:', error.message);
-    res.status(500).json({ error: 'Could not fetch video info. YouTube might be blocking the request. Try again.' });
+
+    if (cookiesPath && fs.existsSync(cookiesPath)) {
+      fs.unlinkSync(cookiesPath);
+    }
+
+    res.status(500).json({
+      error: 'Could not fetch video info. YouTube might be blocking request.'
+    });
   }
 };
 
@@ -65,6 +92,8 @@ export const downloadMp3 = async (req: Request, res: Response) => {
   const tempId = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
   const outputPath = path.join(os.tmpdir(), `yt_${tempId}.%(ext)s`);
   const finalFile = path.join(os.tmpdir(), `yt_${tempId}.mp3`);
+
+  let cookiesPath: string | null = null;
 
   try {
     console.log('Initiating download via yt-dlp to temp file for:', url);
@@ -93,7 +122,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
     // 2. Download and extract audio to the temporary file
     const downloadOptions: any = {
-      format: 'bestaudio[ext=m4a]/bestaudio/best',
+      format: 'bestaudio',
       extractAudio: true,
       audioFormat: 'mp3',
       audioQuality: 0,
@@ -102,6 +131,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       noCheckCertificates: true,
       noWarnings: true,
       extractorArgs: 'youtube:player_client=web,android',
+      forceIpv4: true,
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
     };
 
@@ -110,6 +140,16 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       console.log('Using cookies from:', cookiesPath);
     }
     await youtubedl(url, downloadOptions);
+
+    if (cookiesPath && fs.existsSync(cookiesPath)) {
+      fs.unlinkSync(cookiesPath);
+    }
+
+    const formats = await youtubedl(url, {
+      listFormats: true
+    });
+
+    console.log(formats);
 
     console.log('Extraction complete. Serving file to client:', finalFile);
 
@@ -133,13 +173,20 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     });
 
   } catch (error: any) {
-    console.error('Download/Processing Error:', error.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to process YouTube stream' });
+    console.error('Download Error:', error.message);
+
+    if (cookiesPath && fs.existsSync(cookiesPath)) {
+      fs.unlinkSync(cookiesPath);
     }
-    // Cleanup on failure
+
     if (fs.existsSync(finalFile)) {
-      try { fs.unlinkSync(finalFile); } catch (e) { }
+      fs.unlinkSync(finalFile);
+    }
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to process YouTube stream'
+      });
     }
   }
 };
