@@ -6,20 +6,32 @@ import path from 'path';
 import os from 'os';
 
 // ---------------------------------------------------------------------------
-// Helper: common options shared between metadata + download calls
+// Helper: find cookies.txt — checks Render secret path first, then local
 // ---------------------------------------------------------------------------
-const buildBaseOptions = () => ({
-  noCheckCertificates: true,
-  noWarnings: true,
-  extractorArgs: 'youtube:player_client=android_embedded,android,web',
-  addHeader: [
-    'referer:youtube.com',
-    'user-agent:Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
-  ],
-  ...(fs.existsSync(path.resolve(process.cwd(), 'cookies.txt')) && {
-    cookies: path.resolve(process.cwd(), 'cookies.txt'),
-  }),
-});
+const getCookiePath = (): string | null => {
+  const candidates = [
+    '/etc/secrets/cookies.txt',                      // ✅ Render Secret Files
+    path.resolve(process.cwd(), 'cookies.txt'),       // local dev
+    path.resolve(process.cwd(), 'src/cookies.txt'),   // local alt
+  ];
+  const found = candidates.find(fs.existsSync) ?? null;
+  console.log('[cookies]', found ? `Found at: ${found}` : 'NOT FOUND — no cookies will be used');
+  return found;
+};
+
+const buildBaseOptions = () => {
+  const cookiePath = getCookiePath();
+  return {
+    noCheckCertificates: true,
+    noWarnings: true,
+    extractorArgs: 'youtube:player_client=android_embedded,android,web',
+    addHeader: [
+      'referer:youtube.com',
+      'user-agent:Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
+    ],
+    ...(cookiePath && { cookies: cookiePath }),  // only added if file exists
+  };
+};
 
 // ---------------------------------------------------------------------------
 // GET /metadata?url=...
@@ -38,7 +50,7 @@ export const getMetadata = async (req: Request, res: Response) => {
       dumpSingleJson: true,
       preferFreeFormats: true,
       ...buildBaseOptions(),
-    } as any); // "as any" — YtFlags type is incomplete; extra flags are valid at runtime
+    } as any);
 
     return res.json({
       title: info.title,
@@ -96,7 +108,6 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
     // ── Step 2: Download + convert to MP3 ─────────────────────────────────
     await ytDlp(url, {
-      // Format fallback chain — fixes "Requested format is not available"
       format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
       extractAudio: true,
       audioFormat: 'mp3',
@@ -106,7 +117,6 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       noPlaylist: true,
       preferFreeFormats: true,
       retries: 3,
-      // fragmentRetries is a valid yt-dlp CLI flag but missing from YtFlags type — cast to any
       ...buildBaseOptions(),
     } as any);
 

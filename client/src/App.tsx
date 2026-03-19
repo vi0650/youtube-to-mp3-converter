@@ -1,9 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
-import { Download, Link as LinkIcon, Music, AlertCircle, CheckCircle2, Loader2, Sparkles, Youtube } from 'lucide-react';
-import { Container, Flex, Box, Text, Heading, Button, TextField, Card, Grid, Badge, Callout } from '@radix-ui/themes';
-import Particles, { initParticlesEngine } from "@tsparticles/react";
-import { loadSlim } from "@tsparticles/slim";
+import {
+  Download,
+  Link as LinkIcon,
+  Music,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Sparkles,
+  Youtube,
+  Github,
+  Linkedin,
+  Twitter,
+  Mail,
+  ExternalLink
+} from 'lucide-react';
+import {
+  Container,
+  Flex,
+  Box,
+  Text,
+  Heading,
+  Button,
+  TextField,
+  Card,
+  Grid,
+  Badge,
+  Callout
+} from '@radix-ui/themes';
+import { LiveBackground } from './components/ui/background';
+import { Dock, DockIcon } from './components/ui/dock';
 
 interface VideoMetadata {
   title: string;
@@ -15,32 +41,23 @@ interface VideoMetadata {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 const App = () => {
-  const [init, setInit] = useState(false);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    initParticlesEngine(async (engine) => {
-      await loadSlim(engine);
-    }).then(() => {
-      setInit(true);
-    });
-  }, []);
-
   const handleFetchMetadata = async () => {
     if (!url) {
-        setError('Please enter a link');
-        return;
+      setError('Please enter a link');
+      return;
     }
-    
+
     // Check if it's a valid YT URL
     const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
     if (!ytRegex.test(url)) {
-        setError('Please enter a valid YouTube URL');
-        return;
+      setError('Please enter a valid YouTube URL');
+      return;
     }
 
     setLoading(true);
@@ -60,70 +77,18 @@ const App = () => {
   const handleDownload = () => {
     if (!url) return;
     setDownloading(true);
-    
+
     const downloadUrl = `${API_BASE_URL}/download?url=${encodeURIComponent(url)}`;
     window.location.href = downloadUrl;
-    
-    setTimeout(() => {
-        setDownloading(false);
-    }, 4000);
-  };
 
-  const renderBackground = () => {
-    if (!init) return null;
-    return (
-      <Particles
-        id="tsparticles"
-        options={{
-          background: {
-            color: { value: "#000" },
-          },
-          fpsLimit: 60,
-          interactivity: {
-            events: {
-              onClick: { enable: true, mode: "push" },
-              onHover: { enable: true, mode: "repulse" },
-            },
-            modes: {
-              push: { quantity: 2 },
-              repulse: { distance: 100, duration: 0.4 },
-            },
-          },
-          particles: {
-            color: { value: "#ffffff" },
-            links: {
-              color: "#ffffff",
-              distance: 150,
-              enable: true,
-              opacity: 0.2,
-              width: 1,
-            },
-            move: {
-              direction: "none",
-              enable: true,
-              outModes: { default: "bounce" },
-              random: false,
-              speed: 1,
-              straight: false,
-            },
-            number: {
-              density: { enable: true },
-              value: 60,
-            },
-            opacity: { value: 0.3 },
-            shape: { type: "circle" },
-            size: { value: { min: 1, max: 3 } },
-          },
-          detectRetina: true,
-        }}
-        style={{ position: 'absolute', top: 0, left: 0, zIndex: -1, width: '100%', height: '100%' }}
-      />
-    );
+    setTimeout(() => {
+      setDownloading(false);
+    }, 4000);
   };
 
   return (
     <Box position="relative" minHeight="100vh" style={{ overflow: 'hidden' }}>
-      {renderBackground()}
+      <LiveBackground />
 
       <Container size="2" px="4" py="9" style={{ position: 'relative', zIndex: 1 }}>
         <Flex direction="column" align="center" mt="8" mb="7" style={{ textAlign: 'center' }}>
@@ -135,7 +100,7 @@ const App = () => {
           </Badge>
 
           <Heading size="9" weight="bold" style={{ letterSpacing: '-0.02em', textTransform: 'uppercase' }} mb="4">
-            AUDIO<Text style={{ color: "var(--gray-9)"}}>GENX</Text>
+            AUDIO<Text style={{ color: "var(--gray-9)" }}>GENX</Text>
           </Heading>
 
           <Text size="4" color="gray" style={{ maxWidth: 450 }}>
@@ -145,16 +110,16 @@ const App = () => {
 
         <Card size="3" variant="surface" style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(10px)', border: '1px solid var(--gray-4)' }}>
           <Flex direction="column" gap="4">
-            <TextField.Root 
-              size="3" 
-              variant="surface" 
-              radius="large" 
+            <TextField.Root
+              size="3"
+              variant="surface"
+              radius="large"
               style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
               placeholder="Paste your YouTube link here..."
               value={url}
               onChange={(e) => {
-                  setUrl(e.target.value);
-                  setError('');
+                setUrl(e.target.value);
+                setError('');
               }}
               onKeyDown={(e) => e.key === 'Enter' && handleFetchMetadata()}
             >
@@ -174,22 +139,22 @@ const App = () => {
               </Callout.Root>
             )}
 
-            <Button 
-                size="4" 
-                variant="solid" 
-                color="gray"
-                highContrast
-                onClick={handleFetchMetadata}
-                disabled={loading || !url}
-                style={{ height: 56, cursor: (loading || !url) ? 'not-allowed' : 'pointer' }}
+            <Button
+              size="4"
+              variant="solid"
+              color="gray"
+              highContrast
+              onClick={handleFetchMetadata}
+              disabled={loading || !url}
+              style={{ height: 56, cursor: (loading || !url) ? 'not-allowed' : 'pointer' }}
             >
               {loading ? (
-                  <Loader2 className="animate-spin" size={20} />
+                <Loader2 className="animate-spin" size={20} />
               ) : (
-                  <Flex align="center" gap="2">
-                      <LinkIcon size={20} />
-                      <Text weight="bold" size="3">Analyze Video</Text>
-                  </Flex>
+                <Flex align="center" gap="2">
+                  <LinkIcon size={20} />
+                  <Text weight="bold" size="3">Analyze Video</Text>
+                </Flex>
               )}
             </Button>
           </Flex>
@@ -200,24 +165,24 @@ const App = () => {
             <Card size="3" variant="surface" style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(10px)', border: '1px solid var(--gray-4)' }}>
               <Flex gap="6" align="start" direction={{ initial: 'column', sm: 'row' }}>
                 <Box width={{ initial: '100%', sm: '240px' }} style={{ flexShrink: 0, position: 'relative', borderRadius: 'var(--radius-3)', overflow: 'hidden' }}>
-                    <img src={metadata.thumbnail} alt={metadata.title} style={{ width: '100%', height: 'auto', display: 'block' }} />
-                    <Box style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 8, backgroundColor: 'rgba(0,0,0,0.8)' }}>
-                        <Text size="1" weight="bold" style={{ letterSpacing: '0.1em', display: 'block' }} align="center">PREVIEW READY</Text>
-                    </Box>
+                  <img src={metadata.thumbnail} alt={metadata.title} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                  <Box style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 8, backgroundColor: 'rgba(0,0,0,0.8)' }}>
+                    <Text size="1" weight="bold" style={{ letterSpacing: '0.1em', display: 'block' }} align="center">PREVIEW READY</Text>
+                  </Box>
                 </Box>
 
                 <Flex direction="column" gap="4" style={{ flexGrow: 1, width: '100%' }}>
                   <Box>
                     <Heading size="5" mb="1" style={{ lineHeight: 1.2 }}>{metadata.title}</Heading>
                     <Text size="2" weight="bold" color="gray" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {metadata.author} • {Math.floor(parseInt(metadata.lengthSeconds) / 60)}:{(parseInt(metadata.lengthSeconds) % 60).toString().padStart(2, '0')}
+                      {metadata.author} • {Math.floor(parseInt(metadata.lengthSeconds) / 60)}:{(parseInt(metadata.lengthSeconds) % 60).toString().padStart(2, '0')}
                     </Text>
                   </Box>
 
-                  <Button 
-                    size="4" 
-                    variant="outline" 
-                    color="gray" 
+                  <Button
+                    size="4"
+                    variant="outline"
+                    color="gray"
                     highContrast
                     onClick={handleDownload}
                     disabled={downloading}
@@ -242,35 +207,61 @@ const App = () => {
         )}
 
         <Grid columns={{ initial: '1', sm: '3' }} gap="5" mt="9">
-             {[
-                 { icon: Music, title: "Pure 320kbps", desc: "No compression loss. Hear every detail." },
-                 { icon: Sparkles, title: "Zero Filler", desc: "User-first design. No ads, no redirect maze." },
-                 { icon: CheckCircle2, title: "High Rel", desc: "Optimized server clusters for 24/7 uptime." }
-             ].map((feature, i) => (
-                <Card key={i} variant="surface" style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', textAlign: 'center', padding: 'var(--space-6)' }}>
-                    <Flex direction="column" align="center" gap="4">
-                      <Box style={{ padding: 12, borderRadius: 12, border: '1px solid var(--gray-5)', backgroundColor: 'var(--gray-3)' }}>
-                          <feature.icon size={24} color="white" />
-                      </Box>
-                      <Box>
-                          <Heading size="3" mb="1" style={{ textTransform: 'uppercase', fontStyle: 'italic' }}>{feature.title}</Heading>
-                          <Text size="2" color="gray" weight="medium">{feature.desc}</Text>
-                      </Box>
-                    </Flex>
-                </Card>
-             ))}
+          {[
+            { icon: Music, title: "Pure 320kbps", desc: "No compression loss. Hear every detail." },
+            { icon: Sparkles, title: "Zero Filler", desc: "User-first design. No ads, no redirect maze." },
+            { icon: CheckCircle2, title: "High Rel", desc: "Optimized server clusters for 24/7 uptime." }
+          ].map((feature, i) => (
+            <Card key={i} variant="surface" style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', textAlign: 'center', padding: 'var(--space-6)' }}>
+              <Flex direction="column" align="center" gap="4">
+                <Box style={{ padding: 12, borderRadius: 12, border: '1px solid var(--gray-5)', backgroundColor: 'var(--gray-3)' }}>
+                  <feature.icon size={24} color="white" />
+                </Box>
+                <Box>
+                  <Heading size="3" mb="1" style={{ textTransform: 'uppercase', fontStyle: 'italic' }}>{feature.title}</Heading>
+                  <Text size="2" color="gray" weight="medium">{feature.desc}</Text>
+                </Box>
+              </Flex>
+            </Card>
+          ))}
         </Grid>
 
         <Box mt="9" pt="7" style={{ borderTop: '1px solid var(--gray-4)', textAlign: 'center' }}>
-            <Flex direction="column" gap="4" align="center">
-                <Text size="1" weight="bold" style={{ letterSpacing: '0.2em' }} color="gray">ENGINEERING EXCELLENCE BY GENEX</Text>
-                <Flex gap="6">
-                    <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Privacy</Text>
-                    <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Terms</Text>
-                    <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Safety</Text>
-                </Flex>
+          <Flex direction="column" gap="4" align="center">
+            <Text size="1" weight="bold" style={{ letterSpacing: '0.2em' }} color="gray">ENGINEERING EXCELLENCE BY GENEX</Text>
+
+            <Box mt="4">
+              <Dock iconSize={40} iconMagnification={60} iconDistance={140}>
+                <DockIcon>
+                  <a href="https://github.com/vi0650" target="_blank" rel="noopener noreferrer">
+                    <Github size={24} color="var(--gray-12)" />
+                  </a>
+                </DockIcon>
+                <DockIcon>
+                  <a href="https://www.linkedin.com/in/vaibhav-padmani-669492240" target="_blank" rel="noopener noreferrer">
+                    <Linkedin size={24} color="var(--gray-12)" />
+                  </a>
+                </DockIcon>
+                <DockIcon>
+                  <a href="https://x.com/vi_0650" target="_blank" rel="noopener noreferrer">
+                    <Twitter size={24} color="var(--gray-12)" />
+                  </a>
+                </DockIcon>
+                <DockIcon>
+                  <a href="mailto:vi.vaibhavpadmani650@gmail.com">
+                    <Mail size={24} color="var(--gray-12)" />
+                  </a>
+                </DockIcon>
+              </Dock>
+            </Box>
+
+            <Flex gap="6" mt="4">
+              <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Privacy</Text>
+              <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Terms</Text>
+              <Text size="1" weight="bold" color="gray" style={{ cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Safety</Text>
             </Flex>
-            <Box pb="8" />
+          </Flex>
+          <Box pb="8" />
         </Box>
       </Container>
     </Box>
@@ -278,4 +269,3 @@ const App = () => {
 };
 
 export default App;
-
