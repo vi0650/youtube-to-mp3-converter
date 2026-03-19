@@ -5,6 +5,18 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+// Replace this helper (add it once at the top of your controller file)
+const getCookiesPath = (): string | null => {
+  const paths = [
+    '/etc/secrets/cookies.txt',              // Render Secret Files
+    path.resolve(process.cwd(), 'cookies.txt') // local / fallback
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+};
+
 export const getMetadata = async (req: Request, res: Response) => {
   const { url } = req.query;
 
@@ -23,8 +35,10 @@ export const getMetadata = async (req: Request, res: Response) => {
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
     };
 
-    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
-      options.cookies = path.resolve(process.cwd(), 'cookies.txt');
+    const cookiesPath = getCookiesPath();
+    if (cookiesPath) {
+      options.cookies = cookiesPath;
+      console.log('Using cookies from:', cookiesPath);
     }
 
     const info: any = await youtubedl(url, options);
@@ -64,9 +78,13 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       extractorArgs: 'youtube:player_client=web,android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
     };
-    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
-      infoOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+
+    const cookiesPath = getCookiesPath();
+    if (cookiesPath) {
+      infoOptions.cookies = cookiesPath;
+      console.log('Using cookies from:', cookiesPath);
     }
+
     const info: any = await youtubedl(url, infoOptions);
 
     const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
@@ -86,8 +104,10 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       extractorArgs: 'youtube:player_client=web,android',
       addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
     };
-    if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
-      downloadOptions.cookies = path.resolve(process.cwd(), 'cookies.txt');
+
+    if (cookiesPath) {
+      downloadOptions.cookies = cookiesPath;
+      console.log('Using cookies from:', cookiesPath);
     }
     await youtubedl(url, downloadOptions);
 

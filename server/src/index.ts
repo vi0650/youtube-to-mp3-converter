@@ -7,21 +7,21 @@ import fs from 'fs';
 import path from 'path';
 
 // Write cookies from env to file on server start
-const cookiesBase64 = process.env.YOUTUBE_COOKIES_BASE64;
-if (cookiesBase64) {
-  try {
-    const cookiesPath = path.resolve(process.cwd(), 'cookies.txt');
-    fs.writeFileSync(
-      cookiesPath,
-      Buffer.from(cookiesBase64, 'base64').toString('utf-8')
-    );
-    console.log('YouTube cookies loaded successfully.');
-  } catch (err) {
-    console.error('Failed to write cookies file:', err);
-  }
-} else {
-  console.warn('YOUTUBE_COOKIES_BASE64 not set — YouTube requests may be blocked.');
-}
+// const cookiesBase64 = process.env.YOUTUBE_COOKIES_BASE64;
+// if (cookiesBase64) {
+//   try {
+//     const cookiesPath = path.resolve(process.cwd(), 'cookies.txt');
+//     fs.writeFileSync(
+//       cookiesPath,
+//       Buffer.from(cookiesBase64, 'base64').toString('utf-8')
+//     );
+//     console.log('YouTube cookies loaded successfully.');
+//   } catch (err) {
+//     console.error('Failed to write cookies file:', err);
+//   }
+// } else {
+//   console.warn('YOUTUBE_COOKIES_BASE64 not set — YouTube requests may be blocked.');
+// }
 
 dotenv.config();
 
