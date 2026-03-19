@@ -12,8 +12,7 @@ import {
   Github,
   Linkedin,
   Twitter,
-  Mail,
-  ExternalLink
+  Mail
 } from 'lucide-react';
 import {
   Container,
