@@ -30,10 +30,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: [
-    'https://youtube2mp3-vi0650.vercel.app',
-    'http://localhost:5173'
-  ]
+  origin: '*'
 }));
 app.use(express.json());
 
