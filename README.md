@@ -2,7 +2,7 @@
 
 > An open-source web application that converts YouTube video URLs into downloadable MP3 audio files — instantly and for free.
 
-🌐 **Live Demo:** [youtube-to-mp3-converter-r4jciblqm.vercel.app](https://youtube-to-mp3-converter-r4jciblqm.vercel.app)
+🌐 **Live Demo:** [youtube-to-mp3-converter-r4jciblqm.vercel.app](https://youtube2mp3-vi0650.vercel.app)
 
 ---
 
