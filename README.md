@@ -182,11 +182,4 @@ This project is open-source. See the [LICENSE](LICENSE) file for more details.
 
 ---
 
-## 👤 Author
-
-**vi0650**  
-GitHub: [@vi0650](https://github.com/vi0650)
-
----
-
 > ⭐ If you found this project helpful, consider giving it a star on GitHub!
