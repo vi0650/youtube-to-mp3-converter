@@ -6,6 +6,16 @@
 
 ---
 
+> [!IMPORTANT]
+> **Built with Antigravity** 🚀
+> 
+> This entire project was created using **Antigravity**. Not a single line of code was written manually — everything from the architecture to the UI design was generated through **AI prompts** and **vibe coding**.
+> 
+> 🐛 **Notice:** As this is AI-powered and vibe-coded, it may contain some bugs. If you encounter any issues, please feel free to open a GitHub issue or **contribute a fix** — we’d love your help!
+
+
+---
+
 ## 📌 Table of Contents
 
 - [About the Project](#about-the-project)
