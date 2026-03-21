@@ -6,6 +6,18 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 
+interface YtDlpInfo {
+  title?: string;
+  thumbnail?: string;
+  uploader?: string;
+  channel?: string;
+  duration?: number;
+}
+
+const YOUTUBE_URL_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{11}/;
+
+const isValidYouTubeUrl = (url: string): boolean => YOUTUBE_URL_REGEX.test(url);
+
 const getCookiesPath = (): string | null => {
   const secretPath = '/etc/secrets/cookies.txt';
   const localPath = path.resolve(process.cwd(), 'cookies.txt');
@@ -30,6 +42,16 @@ const getCookiesPath = (): string | null => {
   return tempPath;
 };
 
+const cleanupFile = (filePath: string | null): void => {
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+};
+
 export const getMetadata = async (req: Request, res: Response) => {
   const { url } = req.query;
 
@@ -37,14 +59,16 @@ export const getMetadata = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'YouTube URL is required' });
   }
 
-  // Fix 1 (getMetadata): cookiesPath declared once in function scope so
-  // catch block can always reach it — no inner const re-declaration
+  if (!isValidYouTubeUrl(url)) {
+    return res.status(400).json({ error: 'Invalid YouTube URL' });
+  }
+
   let cookiesPath: string | null = getCookiesPath();
 
   try {
     console.log('Fetching metadata using yt-dlp for:', url);
 
-    const options: any = {
+    const options: Record<string, unknown> = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
@@ -61,12 +85,10 @@ export const getMetadata = async (req: Request, res: Response) => {
       console.log('Using cookies from:', cookiesPath);
     }
 
-    const info: any = await youtubedl(url, options);
+    const info = await youtubedl(url, options) as YtDlpInfo;
 
-    if (cookiesPath && fs.existsSync(cookiesPath)) {
-      fs.unlinkSync(cookiesPath);
-      cookiesPath = null;
-    }
+    cleanupFile(cookiesPath);
+    cookiesPath = null;
 
     res.json({
       title: info.title,
@@ -76,12 +98,7 @@ export const getMetadata = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Metadata Error:', error.message);
-
-    // cookiesPath is the outer let — always visible here now
-    if (cookiesPath && fs.existsSync(cookiesPath)) {
-      fs.unlinkSync(cookiesPath);
-    }
-
+    cleanupFile(cookiesPath);
     res.status(500).json({
       error: 'Could not fetch video info. YouTube might be blocking request.'
     });
@@ -95,21 +112,44 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'YouTube URL is required' });
   }
 
+  if (!isValidYouTubeUrl(url)) {
+    return res.status(400).json({ error: 'Invalid YouTube URL' });
+  }
+
   const tempId = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
   const outputPath = path.join(os.tmpdir(), `yt_${tempId}.%(ext)s`);
   const finalFile = path.join(os.tmpdir(), `yt_${tempId}.mp3`);
 
-  // Fix 1 (downloadMp3): declared once here — catch block always sees the real value,
-  // not the shadowed null from the old inner `const cookiesPath`
   let cookiesPath: string | null = getCookiesPath();
 
   try {
     console.log('Initiating download via yt-dlp to temp file for:', url);
 
-    // Fix 2 + 3: Single yt-dlp call using printJson to get the title alongside
-    // the download. Removes the separate infoOptions round-trip (was Bug 2) and
-    // the debug listFormats call that was deleting the converted MP3 (was Bug 1/primary).
-    const downloadOptions: any = {
+    const commonHeaders = [
+      'referer:youtube.com',
+      'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ];
+
+    // Step 1: Fetch metadata separately to get the title reliably
+    // (printJson + extractAudio conflict — yt-dlp may not return JSON after ffmpeg conversion)
+    const infoOptions: Record<string, unknown> = {
+      dumpSingleJson: true,
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      extractorArgs: 'youtube:player_client=web,android',
+      addHeader: commonHeaders
+    };
+
+    if (cookiesPath) {
+      infoOptions.cookies = cookiesPath;
+    }
+
+    const info = await youtubedl(url, infoOptions) as YtDlpInfo;
+    const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
+
+    // Step 2: Download and extract audio
+    const downloadOptions: Record<string, unknown> = {
       format: 'bestaudio/best',
       extractAudio: true,
       audioFormat: 'mp3',
@@ -121,11 +161,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       preferFreeFormats: true,
       extractorArgs: 'youtube:player_client=web,android',
       forceIpv4: true,
-      printJson: true, // returns metadata so title is available without a second call
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      ]
+      addHeader: commonHeaders
     };
 
     if (cookiesPath) {
@@ -133,47 +169,30 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       console.log('Using cookies from:', cookiesPath);
     }
 
-    const info: any = await youtubedl(url, downloadOptions);
+    await youtubedl(url, downloadOptions);
 
-    if (cookiesPath && fs.existsSync(cookiesPath)) {
-      fs.unlinkSync(cookiesPath);
-      cookiesPath = null;
+    cleanupFile(cookiesPath);
+    cookiesPath = null;
+
+    // Verify the MP3 file exists before serving
+    if (!fs.existsSync(finalFile)) {
+      throw new Error(`Converted MP3 not found at expected path: ${finalFile}`);
     }
-
-    const title =
-      info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() ||
-      'audio';
 
     console.log('Extraction complete. Serving file to client:', finalFile);
 
-    // Send the file to the client and delete it afterward
     res.download(finalFile, `${title}.mp3`, (err) => {
       if (err) {
         console.error('Error during file transfer:', err.message);
       } else {
         console.log('File successfully transferred to client.');
       }
-
-      if (fs.existsSync(finalFile)) {
-        try {
-          fs.unlinkSync(finalFile);
-          console.log('Cleaned up temporary file:', finalFile);
-        } catch (cleanupErr) {
-          console.error('Failed to clean up temp file:', cleanupErr);
-        }
-      }
+      cleanupFile(finalFile);
     });
   } catch (error: any) {
     console.error('Download Error:', error.message);
-
-    // cookiesPath is the outer let — cleanup works correctly now
-    if (cookiesPath && fs.existsSync(cookiesPath)) {
-      fs.unlinkSync(cookiesPath);
-    }
-
-    if (fs.existsSync(finalFile)) {
-      fs.unlinkSync(finalFile);
-    }
+    cleanupFile(cookiesPath);
+    cleanupFile(finalFile);
 
     if (!res.headersSent) {
       res.status(500).json({
