@@ -3,17 +3,20 @@ import ytdl, { Agent, createAgent } from '@distube/ytdl-core';
 import ffmpeg from '../utils/ffmpeg';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
-// Build a ytdl agent with cookies from environment variable
+// Build a ytdl agent with cookies from Render secret file
 const buildAgent = (): Agent | undefined => {
-  const cookiesEnv = process.env.YOUTUBE_COOKIES;
-  if (!cookiesEnv) return undefined;
+  const secretPath = '/etc/secrets/cookies.txt';
+  const localPath = path.resolve(process.cwd(), 'cookies.txt');
+  const cookiesPath = fs.existsSync(secretPath) ? secretPath : fs.existsSync(localPath) ? localPath : null;
+
+  if (!cookiesPath) {
+    console.warn('No cookies.txt found — YouTube requests may be blocked');
+    return undefined;
+  }
 
   try {
-    const tempPath = path.join(os.tmpdir(), 'yt_cookies.txt');
-    fs.writeFileSync(tempPath, cookiesEnv, 'utf-8');
-    return createAgent(undefined, { cookiesTxt: tempPath } as any);
+    return createAgent(undefined, { cookiesTxt: cookiesPath } as any);
   } catch (err) {
     console.error('Failed to build ytdl agent from cookies:', err);
     return undefined;
