@@ -41,9 +41,11 @@ const buildAgent = (): Agent | undefined => {
     const content = fs.readFileSync(cookiesPath, 'utf-8');
     const allCookies = parseCookiesTxt(content);
     // Only pass YouTube/Google auth cookies — other domains cause errors
-    const cookies = allCookies.filter(c =>
-      c.domain.includes('youtube.com') || c.domain.includes('.google.com')
-    );
+    const cookies = allCookies.filter(c => {
+      const d = c.domain.toLowerCase();
+      return d === '.youtube.com' || d === 'youtube.com' ||
+             d === '.google.com'  || d === 'google.com';
+    });
     console.log(`Loaded ${cookies.length} YouTube cookies from ${cookiesPath}`);
     return createAgent(cookies);
   } catch (err) {
