@@ -177,15 +177,25 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
     const title = details.title.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
 
-    console.log('Starting audio stream for:', title);
-
-    // Stream audio directly from YouTube — no temp files
-    // Use a custom filter to pick the best audio-only format
-    const audioStream = ytdl(cleanUrl, {
-      filter: (format) => format.hasAudio && !format.hasVideo,
-      quality: 'highestaudio',
-      agent: ytdlAgent
+    // Pick the best audio format from already-fetched info
+    let format = ytdl.chooseFormat(info.formats, {
+      filter: (fmt) => fmt.hasAudio && !fmt.hasVideo,
+      quality: 'highestaudio'
     });
+
+    // Fallback: if no audio-only format found, pick any format with audio
+    if (!format) {
+      format = ytdl.chooseFormat(info.formats, { filter: 'audioandvideo', quality: 'lowest' });
+    }
+
+    if (!format) {
+      return res.status(500).json({ error: 'No playable audio format found for this video' });
+    }
+
+    console.log('Starting audio stream for:', title, '| format:', format.mimeType);
+
+    // Reuse fetched info — no second network call needed
+    const audioStream = ytdl.downloadFromInfo(info, { format });
 
     // Fix: client disconnect cancels the stream immediately
     req.on('close', () => {
