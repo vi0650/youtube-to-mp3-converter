@@ -39,8 +39,12 @@ const buildAgent = (): Agent | undefined => {
 
   try {
     const content = fs.readFileSync(cookiesPath, 'utf-8');
-    const cookies = parseCookiesTxt(content);
-    console.log(`Loaded ${cookies.length} cookies from ${cookiesPath}`);
+    const allCookies = parseCookiesTxt(content);
+    // Only pass YouTube/Google auth cookies — other domains cause errors
+    const cookies = allCookies.filter(c =>
+      c.domain.includes('youtube.com') || c.domain.includes('.google.com')
+    );
+    console.log(`Loaded ${cookies.length} YouTube cookies from ${cookiesPath}`);
     return createAgent(cookies);
   } catch (err) {
     console.error('Failed to build ytdl agent from cookies:', err);
