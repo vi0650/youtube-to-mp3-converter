@@ -37,20 +37,24 @@ export const getMetadata = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'YouTube URL is required' });
   }
 
-  let cookiesPath: string | null = null;
+  // Fix 1 (getMetadata): cookiesPath declared once in function scope so
+  // catch block can always reach it — no inner const re-declaration
+  let cookiesPath: string | null = getCookiesPath();
 
   try {
     console.log('Fetching metadata using yt-dlp for:', url);
+
     const options: any = {
       dumpSingleJson: true,
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
       extractorArgs: 'youtube:player_client=web,android',
-      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ]
     };
-
-    const cookiesPath = getCookiesPath();
 
     if (cookiesPath) {
       options.cookies = cookiesPath;
@@ -61,6 +65,7 @@ export const getMetadata = async (req: Request, res: Response) => {
 
     if (cookiesPath && fs.existsSync(cookiesPath)) {
       fs.unlinkSync(cookiesPath);
+      cookiesPath = null;
     }
 
     res.json({
@@ -72,6 +77,7 @@ export const getMetadata = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Metadata Error:', error.message);
 
+    // cookiesPath is the outer let — always visible here now
     if (cookiesPath && fs.existsSync(cookiesPath)) {
       fs.unlinkSync(cookiesPath);
     }
@@ -93,34 +99,16 @@ export const downloadMp3 = async (req: Request, res: Response) => {
   const outputPath = path.join(os.tmpdir(), `yt_${tempId}.%(ext)s`);
   const finalFile = path.join(os.tmpdir(), `yt_${tempId}.mp3`);
 
-  let cookiesPath: string | null = null;
+  // Fix 1 (downloadMp3): declared once here — catch block always sees the real value,
+  // not the shadowed null from the old inner `const cookiesPath`
+  let cookiesPath: string | null = getCookiesPath();
 
   try {
     console.log('Initiating download via yt-dlp to temp file for:', url);
 
-    // 1. Get info to construct the final filename
-    const infoOptions: any = {
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      noWarnings: true,
-      preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=web,android',
-      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0']
-    };
-
-    const cookiesPath = getCookiesPath();
-    if (cookiesPath) {
-      infoOptions.cookies = cookiesPath;
-      console.log('Using cookies from:', cookiesPath);
-    }
-
-    const info: any = await youtubedl(url, infoOptions);
-
-    const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
-
-    console.log('Got video metadata. Starting audio extraction for:', title);
-
-    // 2. Download and extract audio to the temporary file
+    // Fix 2 + 3: Single yt-dlp call using printJson to get the title alongside
+    // the download. Removes the separate infoOptions round-trip (was Bug 2) and
+    // the debug listFormats call that was deleting the converted MP3 (was Bug 1/primary).
     const downloadOptions: any = {
       format: 'bestaudio/best',
       extractAudio: true,
@@ -130,30 +118,35 @@ export const downloadMp3 = async (req: Request, res: Response) => {
       ffmpegLocation: ffmpegPath || undefined,
       noCheckCertificates: true,
       noWarnings: true,
+      preferFreeFormats: true,
       extractorArgs: 'youtube:player_client=web,android',
       forceIpv4: true,
-      addHeader: ['referer:youtube.com', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)']
+      printJson: true, // returns metadata so title is available without a second call
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ]
     };
 
     if (cookiesPath) {
       downloadOptions.cookies = cookiesPath;
       console.log('Using cookies from:', cookiesPath);
     }
-    await youtubedl(url, downloadOptions);
+
+    const info: any = await youtubedl(url, downloadOptions);
 
     if (cookiesPath && fs.existsSync(cookiesPath)) {
       fs.unlinkSync(cookiesPath);
+      cookiesPath = null;
     }
 
-    const formats = await youtubedl(url, {
-      listFormats: true
-    });
-
-    console.log(formats);
+    const title =
+      info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() ||
+      'audio';
 
     console.log('Extraction complete. Serving file to client:', finalFile);
 
-    // 3. Send the file to the client and delete it afterward
+    // Send the file to the client and delete it afterward
     res.download(finalFile, `${title}.mp3`, (err) => {
       if (err) {
         console.error('Error during file transfer:', err.message);
@@ -161,7 +154,6 @@ export const downloadMp3 = async (req: Request, res: Response) => {
         console.log('File successfully transferred to client.');
       }
 
-      // Cleanup temp file
       if (fs.existsSync(finalFile)) {
         try {
           fs.unlinkSync(finalFile);
@@ -171,10 +163,10 @@ export const downloadMp3 = async (req: Request, res: Response) => {
         }
       }
     });
-
   } catch (error: any) {
     console.error('Download Error:', error.message);
 
+    // cookiesPath is the outer let — cleanup works correctly now
     if (cookiesPath && fs.existsSync(cookiesPath)) {
       fs.unlinkSync(cookiesPath);
     }
