@@ -1,6 +1,26 @@
 import { Request, Response } from 'express';
-import ytdl from '@distube/ytdl-core';
+import ytdl, { Agent, createAgent } from '@distube/ytdl-core';
 import ffmpeg from '../utils/ffmpeg';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+// Build a ytdl agent with cookies from environment variable
+const buildAgent = (): Agent | undefined => {
+  const cookiesEnv = process.env.YOUTUBE_COOKIES;
+  if (!cookiesEnv) return undefined;
+
+  try {
+    const tempPath = path.join(os.tmpdir(), 'yt_cookies.txt');
+    fs.writeFileSync(tempPath, cookiesEnv, 'utf-8');
+    return createAgent(undefined, { cookiesTxt: tempPath } as any);
+  } catch (err) {
+    console.error('Failed to build ytdl agent from cookies:', err);
+    return undefined;
+  }
+};
+
+const ytdlAgent = buildAgent();
 
 const YOUTUBE_URL_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{11}/;
 
@@ -81,7 +101,7 @@ export const getMetadata = async (req: Request, res: Response) => {
 
     // Fallback: use @distube/ytdl-core
     console.log('No YOUTUBE_API_KEY set — falling back to ytdl-core for metadata');
-    const info = await ytdl.getInfo(cleanUrl);
+    const info = await ytdl.getInfo(cleanUrl, { agent: ytdlAgent });
     const details = info.videoDetails;
 
     return res.json({
@@ -113,7 +133,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
 
   try {
     console.log('Fetching video info for:', cleanUrl);
-    const info = await ytdl.getInfo(cleanUrl);
+    const info = await ytdl.getInfo(cleanUrl, { agent: ytdlAgent });
     const details = info.videoDetails;
 
     // Reject videos longer than 15 minutes
@@ -128,7 +148,8 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     // Stream audio directly from YouTube — no temp files
     const audioStream = ytdl(cleanUrl, {
       filter: 'audioonly',
-      quality: 'highestaudio'
+      quality: 'highestaudio',
+      agent: ytdlAgent
     });
 
     // Fix: client disconnect cancels the stream immediately
