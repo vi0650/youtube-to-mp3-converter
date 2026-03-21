@@ -4,11 +4,33 @@ import ffmpeg from '../utils/ffmpeg';
 import fs from 'fs';
 import path from 'path';
 
+// Parse Netscape cookies.txt format into cookie objects for ytdl-core
+const parseCookiesTxt = (content: string) => {
+  return content
+    .split('\n')
+    .filter(line => line.trim() && !line.startsWith('#'))
+    .map(line => {
+      const parts = line.split('\t');
+      if (parts.length < 7) return null;
+      return {
+        name: parts[5].trim(),
+        value: parts[6].trim(),
+        domain: parts[0].replace('#HttpOnly_', '').trim(),
+        path: parts[2].trim(),
+        secure: parts[3].trim() === 'TRUE',
+        expires: parseInt(parts[4].trim()) || undefined,
+        httpOnly: parts[0].startsWith('#HttpOnly_'),
+      };
+    })
+    .filter(Boolean) as any[];
+};
+
 // Build a ytdl agent with cookies from Render secret file
 const buildAgent = (): Agent | undefined => {
   const secretPath = '/etc/secrets/cookies.txt';
   const localPath = path.resolve(process.cwd(), 'cookies.txt');
-  const cookiesPath = fs.existsSync(secretPath) ? secretPath : fs.existsSync(localPath) ? localPath : null;
+  const cookiesPath = fs.existsSync(secretPath) ? secretPath
+    : fs.existsSync(localPath) ? localPath : null;
 
   if (!cookiesPath) {
     console.warn('No cookies.txt found — YouTube requests may be blocked');
@@ -16,7 +38,10 @@ const buildAgent = (): Agent | undefined => {
   }
 
   try {
-    return createAgent(undefined, { cookiesTxt: cookiesPath } as any);
+    const content = fs.readFileSync(cookiesPath, 'utf-8');
+    const cookies = parseCookiesTxt(content);
+    console.log(`Loaded ${cookies.length} cookies from ${cookiesPath}`);
+    return createAgent(cookies);
   } catch (err) {
     console.error('Failed to build ytdl agent from cookies:', err);
     return undefined;
