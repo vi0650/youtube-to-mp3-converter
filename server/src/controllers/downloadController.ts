@@ -180,8 +180,9 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     console.log('Starting audio stream for:', title);
 
     // Stream audio directly from YouTube — no temp files
+    // Use a custom filter to pick the best audio-only format
     const audioStream = ytdl(cleanUrl, {
-      filter: 'audioonly',
+      filter: (format) => format.hasAudio && !format.hasVideo,
       quality: 'highestaudio',
       agent: ytdlAgent
     });
