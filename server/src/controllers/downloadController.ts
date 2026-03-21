@@ -1,55 +1,43 @@
 import { Request, Response } from 'express';
-import youtubedl from 'youtube-dl-exec';
-import ffmpegPath from 'ffmpeg-static';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import crypto from 'crypto';
-
-interface YtDlpInfo {
-  title?: string;
-  thumbnail?: string;
-  uploader?: string;
-  channel?: string;
-  duration?: number;
-}
+import ytdl from '@distube/ytdl-core';
+import ffmpeg from '../utils/ffmpeg';
 
 const YOUTUBE_URL_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{11}/;
 
 const isValidYouTubeUrl = (url: string): boolean => YOUTUBE_URL_REGEX.test(url);
 
-const getCookiesPath = (): string | null => {
-  const secretPath = '/etc/secrets/cookies.txt';
-  const localPath = path.resolve(process.cwd(), 'cookies.txt');
-
-  let sourcePath: string | null = null;
-
-  if (fs.existsSync(secretPath)) {
-    sourcePath = secretPath;
-  } else if (fs.existsSync(localPath)) {
-    sourcePath = localPath;
+const sanitizeUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    if (parsed.hostname.includes('youtu.be')) {
+      return `https://youtu.be${parsed.pathname}`;
+    }
+    const videoId = parsed.searchParams.get('v');
+    return videoId ? `https://www.youtube.com/watch?v=${videoId}` : url;
+  } catch {
+    return url;
   }
-
-  if (!sourcePath) return null;
-
-  const tempPath = path.join(
-    os.tmpdir(),
-    `cookies_${crypto.randomUUID()}.txt`
-  );
-
-  fs.copyFileSync(sourcePath, tempPath);
-
-  return tempPath;
 };
 
-const cleanupFile = (filePath: string | null): void => {
-  if (filePath && fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch {
-      // ignore cleanup errors
+const extractVideoId = (url: string): string | null => {
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    if (parsed.hostname.includes('youtu.be')) {
+      return parsed.pathname.slice(1).split('?')[0];
     }
+    return parsed.searchParams.get('v');
+  } catch {
+    return null;
   }
+};
+
+// Parse ISO 8601 duration (e.g. PT4M13S) to total seconds
+const parseDuration = (iso: string): number => {
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  const h = parseInt(match?.[1] || '0');
+  const m = parseInt(match?.[2] || '0');
+  const s = parseInt(match?.[3] || '0');
+  return h * 3600 + m * 60 + s;
 };
 
 export const getMetadata = async (req: Request, res: Response) => {
@@ -63,43 +51,49 @@ export const getMetadata = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid YouTube URL' });
   }
 
-  let cookiesPath: string | null = getCookiesPath();
+  const cleanUrl = sanitizeUrl(url);
+  const apiKey = process.env.YOUTUBE_API_KEY;
 
   try {
-    console.log('Fetching metadata using yt-dlp for:', url);
+    // Use YouTube Data API v3 if key is available — fast and reliable
+    if (apiKey) {
+      const videoId = extractVideoId(cleanUrl);
+      if (!videoId) {
+        return res.status(400).json({ error: 'Could not extract video ID' });
+      }
 
-    const options: Record<string, unknown> = {
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      noWarnings: true,
-      skipDownload: true,
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      ]
-    };
+      const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${apiKey}`;
+      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(10_000) });
+      const data = await response.json() as any;
 
-    if (cookiesPath) {
-      options.cookies = cookiesPath;
-      console.log('Using cookies from:', cookiesPath);
+      const item = data.items?.[0];
+      if (!item) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
+      return res.json({
+        title: item.snippet.title,
+        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
+        author: item.snippet.channelTitle,
+        lengthSeconds: parseDuration(item.contentDetails.duration).toString()
+      });
     }
 
-    const info = await youtubedl(url, options) as YtDlpInfo;
+    // Fallback: use @distube/ytdl-core
+    console.log('No YOUTUBE_API_KEY set — falling back to ytdl-core for metadata');
+    const info = await ytdl.getInfo(cleanUrl);
+    const details = info.videoDetails;
 
-    cleanupFile(cookiesPath);
-    cookiesPath = null;
-
-    res.json({
-      title: info.title,
-      thumbnail: info.thumbnail,
-      author: info.uploader || info.channel,
-      lengthSeconds: info.duration?.toString(),
+    return res.json({
+      title: details.title,
+      thumbnail: details.thumbnails?.at(-1)?.url,
+      author: details.author?.name,
+      lengthSeconds: details.lengthSeconds
     });
   } catch (error: any) {
     console.error('Metadata Error:', error.message);
-    cleanupFile(cookiesPath);
-    res.status(500).json({
-      error: 'Could not fetch video info. YouTube might be blocking request.'
+    return res.status(500).json({
+      error: 'Could not fetch video info. The video may be unavailable.'
     });
   }
 };
@@ -115,87 +109,62 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid YouTube URL' });
   }
 
-  const tempId = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
-  const outputPath = path.join(os.tmpdir(), `yt_${tempId}.%(ext)s`);
-  const finalFile = path.join(os.tmpdir(), `yt_${tempId}.mp3`);
-
-  let cookiesPath: string | null = getCookiesPath();
+  const cleanUrl = sanitizeUrl(url);
 
   try {
-    console.log('Initiating download via yt-dlp to temp file for:', url);
+    console.log('Fetching video info for:', cleanUrl);
+    const info = await ytdl.getInfo(cleanUrl);
+    const details = info.videoDetails;
 
-    const commonHeaders = [
-      'referer:youtube.com',
-      'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    ];
-
-    // Step 1: Fetch metadata separately to get the title reliably
-    // (printJson + extractAudio conflict — yt-dlp may not return JSON after ffmpeg conversion)
-    const infoOptions: Record<string, unknown> = {
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      noWarnings: true,
-      skipDownload: true,
-      addHeader: commonHeaders
-    };
-
-    if (cookiesPath) {
-      infoOptions.cookies = cookiesPath;
+    // Reject videos longer than 15 minutes
+    if (parseInt(details.lengthSeconds) > 900) {
+      return res.status(400).json({ error: 'Video too long. Maximum is 15 minutes.' });
     }
 
-    const info = await youtubedl(url, infoOptions) as YtDlpInfo;
-    const title = info.title?.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
+    const title = details.title.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
 
-    // Step 2: Download and extract audio
-    const downloadOptions: Record<string, unknown> = {
-      format: 'bestaudio/best',
-      extractAudio: true,
-      audioFormat: 'mp3',
-      audioQuality: 0,
-      output: outputPath,
-      ffmpegLocation: ffmpegPath || undefined,
-      noCheckCertificates: true,
-      noWarnings: true,
-      preferFreeFormats: true,
-      extractorArgs: 'youtube:player_client=web,android',
-      forceIpv4: true,
-      addHeader: commonHeaders
-    };
+    console.log('Starting audio stream for:', title);
 
-    if (cookiesPath) {
-      downloadOptions.cookies = cookiesPath;
-      console.log('Using cookies from:', cookiesPath);
-    }
-
-    await youtubedl(url, downloadOptions);
-
-    cleanupFile(cookiesPath);
-    cookiesPath = null;
-
-    // Verify the MP3 file exists before serving
-    if (!fs.existsSync(finalFile)) {
-      throw new Error(`Converted MP3 not found at expected path: ${finalFile}`);
-    }
-
-    console.log('Extraction complete. Serving file to client:', finalFile);
-
-    res.download(finalFile, `${title}.mp3`, (err) => {
-      if (err) {
-        console.error('Error during file transfer:', err.message);
-      } else {
-        console.log('File successfully transferred to client.');
-      }
-      cleanupFile(finalFile);
+    // Stream audio directly from YouTube — no temp files
+    const audioStream = ytdl(cleanUrl, {
+      filter: 'audioonly',
+      quality: 'highestaudio'
     });
+
+    // Fix: client disconnect cancels the stream immediately
+    req.on('close', () => {
+      audioStream.destroy();
+    });
+
+    audioStream.on('error', (err) => {
+      console.error('ytdl stream error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to stream audio from YouTube' });
+      }
+    });
+
+    res.setHeader('Content-Disposition', `attachment; filename="${title}.mp3"`);
+    res.setHeader('Content-Type', 'audio/mpeg');
+
+    // Pipe through ffmpeg for MP3 conversion, stream directly to client
+    ffmpeg(audioStream)
+      .audioCodec('libmp3lame')
+      .audioQuality(2)
+      .format('mp3')
+      .on('start', (cmd) => console.log('ffmpeg started:', cmd))
+      .on('error', (err) => {
+        console.error('ffmpeg error:', err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to convert audio' });
+        }
+      })
+      .on('end', () => console.log('ffmpeg conversion complete for:', title))
+      .pipe(res, { end: true });
+
   } catch (error: any) {
     console.error('Download Error:', error.message);
-    cleanupFile(cookiesPath);
-    cleanupFile(finalFile);
-
     if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Failed to process YouTube stream'
-      });
+      res.status(500).json({ error: 'Failed to process YouTube stream' });
     }
   }
 };
