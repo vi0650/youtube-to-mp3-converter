@@ -1,60 +1,34 @@
 import { Request, Response } from 'express';
-import ytdl, { Agent, createAgent } from '@distube/ytdl-core';
-import ffmpeg from '../utils/ffmpeg';
+import ytDlp from 'youtube-dl-exec';
+import ffmpegStatic from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
 
-// Parse Netscape cookies.txt format into cookie objects for ytdl-core
-const parseCookiesTxt = (content: string) => {
-  return content
-    .split('\n')
-    .filter(line => line.trim() && !line.startsWith('#'))
-    .map(line => {
-      const parts = line.split('\t');
-      if (parts.length < 7) return null;
-      return {
-        name: parts[5].trim(),
-        value: parts[6].trim(),
-        domain: parts[0].replace('#HttpOnly_', '').trim(),
-        path: parts[2].trim(),
-        secure: parts[3].trim() === 'TRUE',
-        expires: parseInt(parts[4].trim()) || undefined,
-        httpOnly: parts[0].startsWith('#HttpOnly_'),
-      };
-    })
-    .filter(Boolean) as any[];
-};
-
-// Build a ytdl agent with cookies from Render secret file
-const buildAgent = (): Agent | undefined => {
+const getCookiesPath = (): string | undefined => {
   const secretPath = '/etc/secrets/cookies.txt';
   const localPath = path.resolve(process.cwd(), 'cookies.txt');
   const cookiesPath = fs.existsSync(secretPath) ? secretPath
     : fs.existsSync(localPath) ? localPath : null;
 
   if (!cookiesPath) {
-    console.warn('No cookies.txt found — YouTube requests may be blocked');
+    console.warn('No cookies.txt found - YouTube requests may be blocked');
     return undefined;
   }
 
-  try {
-    const content = fs.readFileSync(cookiesPath, 'utf-8');
-    const allCookies = parseCookiesTxt(content);
-    // Only pass YouTube/Google auth cookies — other domains cause errors
-    const cookies = allCookies.filter(c => {
-      const d = c.domain.toLowerCase();
-      return d === '.youtube.com' || d === 'youtube.com' ||
-             d === '.google.com'  || d === 'google.com';
-    });
-    console.log(`Loaded ${cookies.length} YouTube cookies from ${cookiesPath}`);
-    return createAgent(cookies);
-  } catch (err) {
-    console.error('Failed to build ytdl agent from cookies:', err);
-    return undefined;
-  }
+  console.log(`Using YouTube cookies from ${cookiesPath}`);
+  return cookiesPath;
 };
 
-const ytdlAgent = buildAgent();
+const cookiesPath = getCookiesPath();
+const extractorOptions = {
+  ...(cookiesPath ? { cookies: cookiesPath } : {}),
+  noCheckCertificates: true,
+  noUpdate: true,
+  noPlaylist: true,
+  jsRuntimes: 'node' as const,
+  remoteComponents: 'ejs:github' as const,
+  ffmpegLocation: ffmpegStatic || undefined,
+};
 
 const YOUTUBE_URL_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{11}/;
 
@@ -85,13 +59,9 @@ const extractVideoId = (url: string): string | null => {
   }
 };
 
-// Parse ISO 8601 duration (e.g. PT4M13S) to total seconds
 const parseDuration = (iso: string): number => {
   const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  const h = parseInt(match?.[1] || '0');
-  const m = parseInt(match?.[2] || '0');
-  const s = parseInt(match?.[3] || '0');
-  return h * 3600 + m * 60 + s;
+  return Number(match?.[1] || 0) * 3600 + Number(match?.[2] || 0) * 60 + Number(match?.[3] || 0);
 };
 
 export const getMetadata = async (req: Request, res: Response) => {
@@ -133,16 +103,18 @@ export const getMetadata = async (req: Request, res: Response) => {
       });
     }
 
-    // Fallback: use @distube/ytdl-core
-    console.log('No YOUTUBE_API_KEY set — falling back to ytdl-core for metadata');
-    const info = await ytdl.getInfo(cleanUrl, { agent: ytdlAgent });
-    const details = info.videoDetails;
+    console.log('Fetching metadata with yt-dlp');
+    const info = await ytDlp(cleanUrl, {
+      ...extractorOptions,
+      dumpSingleJson: true,
+      skipDownload: true,
+    }) as any;
 
     return res.json({
-      title: details.title,
-      thumbnail: details.thumbnails?.at(-1)?.url,
-      author: details.author?.name,
-      lengthSeconds: details.lengthSeconds
+      title: info.title,
+      thumbnail: info.thumbnail,
+      author: info.channel || info.uploader,
+      lengthSeconds: String(info.duration || 0),
     });
   } catch (error: any) {
     console.error('Metadata Error:', error.message);
@@ -166,66 +138,45 @@ export const downloadMp3 = async (req: Request, res: Response) => {
   const cleanUrl = sanitizeUrl(url);
 
   try {
-    console.log('Fetching video info for:', cleanUrl);
-    const info = await ytdl.getInfo(cleanUrl, { agent: ytdlAgent });
-    const details = info.videoDetails;
+    console.log('Starting yt-dlp MP3 stream for:', cleanUrl);
+    const info = await ytDlp(cleanUrl, {
+      ...extractorOptions,
+      dumpSingleJson: true,
+      skipDownload: true,
+    }) as any;
 
     // Reject videos longer than 15 minutes
-    if (parseInt(details.lengthSeconds) > 900) {
+    if ((info.duration || 0) > 900) {
       return res.status(400).json({ error: 'Video too long. Maximum is 15 minutes.' });
     }
 
-    const title = details.title.replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
-
-    // Pick the best audio format from already-fetched info
-    let format = ytdl.chooseFormat(info.formats, {
-      filter: (fmt) => fmt.hasAudio && !fmt.hasVideo,
-      quality: 'highestaudio'
-    });
-
-    // Fallback: if no audio-only format found, pick any format with audio
-    if (!format) {
-      format = ytdl.chooseFormat(info.formats, { filter: 'audioandvideo', quality: 'lowest' });
-    }
-
-    if (!format) {
-      return res.status(500).json({ error: 'No playable audio format found for this video' });
-    }
-
-    console.log('Starting audio stream for:', title, '| format:', format.mimeType);
-
-    // Reuse fetched info — no second network call needed
-    const audioStream = ytdl.downloadFromInfo(info, { format });
-
-    // Fix: client disconnect cancels the stream immediately
-    req.on('close', () => {
-      audioStream.destroy();
-    });
-
-    audioStream.on('error', (err) => {
-      console.error('ytdl stream error:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to stream audio from YouTube' });
-      }
-    });
+    const title = String(info.title || 'audio').replace(/[^\w\s.-]/g, ' ').replace(/\s+/g, ' ').trim() || 'audio';
 
     res.setHeader('Content-Disposition', `attachment; filename="${title}.mp3"`);
     res.setHeader('Content-Type', 'audio/mpeg');
 
-    // Pipe through ffmpeg for MP3 conversion, stream directly to client
-    ffmpeg(audioStream)
-      .audioCodec('libmp3lame')
-      .audioQuality(2)
-      .format('mp3')
-      .on('start', (cmd) => console.log('ffmpeg started:', cmd))
-      .on('error', (err) => {
-        console.error('ffmpeg error:', err.message);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to convert audio' });
-        }
-      })
-      .on('end', () => console.log('ffmpeg conversion complete for:', title))
-      .pipe(res, { end: true });
+    const audioProcess = (ytDlp as any).exec(cleanUrl, {
+      ...extractorOptions,
+      extractAudio: true,
+      audioFormat: 'mp3',
+      audioQuality: '0',
+      output: '-',
+      quiet: true,
+      noWarnings: true,
+    });
+
+    req.on('close', () => audioProcess.kill());
+    audioProcess.stderr?.on('data', (chunk: Buffer) => console.error('yt-dlp:', chunk.toString().trim()));
+    audioProcess.on('error', (err: Error) => {
+      console.error('yt-dlp stream error:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream audio from YouTube' });
+    });
+    audioProcess.catch((err: Error) => {
+      console.error('yt-dlp process failed:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to download audio from YouTube' });
+      else res.destroy(err);
+    });
+    audioProcess.stdout.pipe(res);
 
   } catch (error: any) {
     console.error('Download Error:', error.message);
