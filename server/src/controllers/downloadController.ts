@@ -2,21 +2,30 @@ import { Request, Response } from 'express';
 import ytDlp from 'youtube-dl-exec';
 import ffmpegStatic from 'ffmpeg-static';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 const getCookiesPath = (): string | undefined => {
   const secretPath = '/etc/secrets/cookies.txt';
   const localPath = path.resolve(process.cwd(), 'cookies.txt');
-  const cookiesPath = fs.existsSync(secretPath) ? secretPath
+  const sourcePath = fs.existsSync(secretPath) ? secretPath
     : fs.existsSync(localPath) ? localPath : null;
 
-  if (!cookiesPath) {
+  if (!sourcePath) {
     console.warn('No cookies.txt found - YouTube requests may be blocked');
     return undefined;
   }
 
-  console.log(`Using YouTube cookies from ${cookiesPath}`);
-  return cookiesPath;
+  // Render secret files are read-only, but yt-dlp may update its cookie jar.
+  if (sourcePath === secretPath) {
+    const writablePath = path.join(os.tmpdir(), 'ytto-mp3-cookies.txt');
+    fs.copyFileSync(sourcePath, writablePath);
+    console.log(`Using YouTube cookies from ${sourcePath}`);
+    return writablePath;
+  }
+
+  console.log(`Using YouTube cookies from ${sourcePath}`);
+  return sourcePath;
 };
 
 const cookiesPath = getCookiesPath();
