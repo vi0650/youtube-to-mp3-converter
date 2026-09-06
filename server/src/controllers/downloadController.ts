@@ -29,14 +29,17 @@ const getCookiesPath = (): string | undefined => {
 };
 
 const cookiesPath = getCookiesPath();
-const extractorOptions = {
-  ...(cookiesPath ? { cookies: cookiesPath } : {}),
+const publicExtractorOptions = {
   noCheckCertificates: true,
   noUpdate: true,
   noPlaylist: true,
   jsRuntimes: 'node' as const,
   remoteComponents: 'ejs:github' as const,
   ffmpegLocation: ffmpegStatic || undefined,
+};
+const authenticatedExtractorOptions = {
+  ...publicExtractorOptions,
+  ...(cookiesPath ? { cookies: cookiesPath } : {}),
 };
 
 const YOUTUBE_URL_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{11}/;
@@ -114,7 +117,7 @@ export const getMetadata = async (req: Request, res: Response) => {
 
     console.log('Fetching metadata with yt-dlp');
     const info = await ytDlp(cleanUrl, {
-      ...extractorOptions,
+      ...authenticatedExtractorOptions,
       dumpSingleJson: true,
       skipDownload: true,
     }) as any;
@@ -149,7 +152,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
   try {
     console.log('Starting yt-dlp MP3 stream for:', cleanUrl);
     const info = await ytDlp(cleanUrl, {
-      ...extractorOptions,
+      ...publicExtractorOptions,
       dumpSingleJson: true,
       skipDownload: true,
     }) as any;
@@ -165,7 +168,7 @@ export const downloadMp3 = async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'audio/mpeg');
 
     const audioProcess = (ytDlp as any).exec(cleanUrl, {
-      ...extractorOptions,
+      ...publicExtractorOptions,
       extractAudio: true,
       audioFormat: 'mp3',
       audioQuality: '0',
